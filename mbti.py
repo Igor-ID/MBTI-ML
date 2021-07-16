@@ -15,6 +15,15 @@ from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.feature_extraction.text import TfidfTransformer
 from sklearn.metrics import accuracy_score
+from sklearn.metrics import classification_report
+from sklearn.naive_bayes import MultinomialNB
+from xgboost import XGBClassifier
+from catboost import CatBoostClassifier
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing import sequence
+from tensorflow.keras.models import Sequential, Model
+from tensorflow.keras.layers import Dense, Dropout, Flatten, LSTM, Conv1D, Input, MaxPooling1D, Embedding
+from sklearn.preprocessing import OneHotEncoder
 
 pd.set_option('display.max_columns', None)
 pd.options.display.max_colwidth = 50
@@ -38,7 +47,7 @@ def convert_emoticons(data):
 # Pre-processing
 def preprocess_data(data):
     # The way to implement the replacement of "|||" using pandas dataframe method
-    data = data.str.replace(r'([|])', ' ', regex=True)
+    data = data.str.replace('|||', ' ', regex=False)
     # The way to replace links ending jpg|jpeg|gif|png with IMAGE
     data = data.str.replace(r'https?://\S+?/\S+?\.(?:jpg|jpeg|gif|png)', 'IMAGE', regex=True)
     # The way to replace the remaining links with URL
@@ -80,28 +89,77 @@ df['posts'] = df['posts'].str.replace(sub, '')
 df['type of encoding'] = LabelEncoder().fit_transform(df['type'])
 target = df['type of encoding']
 
+# Use one-hot encoder and tokenization for Sequential model
+ohe = OneHotEncoder(sparse=False)
+target_seq = ohe.fit_transform(target.values.reshape(-1, 1))
+# Tokenize words
+max_nb_words = 200000
+tokenizer = Tokenizer(num_words=max_nb_words)
+tokenizer.fit_on_texts(df["posts"])
+# Creating dictionary of word indexes
+word_index = tokenizer.word_index
+print('Found %s unique tokens.' % len(word_index))
+# Retokenize
+max_nb_words = len(word_index)
+tokenizer = Tokenizer(num_words=max_nb_words)
+tokenizer.fit_on_texts(df["posts"])
+sequences = tokenizer.texts_to_sequences(df["posts"])
+print(sequences[0])
+print(len(sequences))
+
+# Constants
+input_y_num = 16
+max_post_len = np.max([len(x) for x in sequences])
+
+# Pad Sequences
+sequences = sequence.pad_sequences(sequences, maxlen=max_post_len)
+
+# Split Train/Test
+X_train_seq, X_test_seq, y_train_seq, y_test_seq = train_test_split(sequences, target_seq, test_size=0.1,
+                                                                    stratify=target_seq, random_state=42)
+
+# Bag of Words Model
 # Vectorizing(converting posts into numerical form) the posts for the model and filtering Stop-words
 train = CountVectorizer(stop_words='english').fit_transform(df["posts"])
 # print(train, train.shape)
 # print(target)
 
 # Training & Evaluating : 70-30 split
-X_train, X_test, y_train, y_test = train_test_split(train, target, test_size=0.3, stratify=target, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(train, target, test_size=0.15, stratify=target, random_state=42)
 # print(X_train.shape, y_train.shape, X_test.shape, y_test.shape)
 
 # Logistic Regression
-accuracies = {}
+# fit model to training data
+# logreg = LogisticRegression()
+# logreg.fit(X_train, y_train)
+# # make predictions for test data
+# Y_test = logreg.predict(X_test)
+# # evaluate predictions
+# predictions = [round(value) for value in Y_test]
+# accuracy = accuracy_score(y_test, predictions)
+# # print the result as float number with 2 digits after the delimiter(%.2f%%)
+# print("Accuracy: %.2f%%" % (accuracy * 100.0))  # 49.79%
 
-logreg = LogisticRegression()
-logreg.fit(X_train, y_train)
+# XG boost Classifier
+# xgb = XGBClassifier(use_label_encoder=False)
+# xgb.fit(X_train, y_train)
+# Y_test = xgb.predict(X_test)
+# # evaluate predictions
+# predictions = [round(value) for value in Y_test]
+# accuracy = accuracy_score(y_test, predictions)
+# print("Accuracy: %.2f%%" % (accuracy * 100.0))  # 52.92%
 
-Y_pred = logreg.predict(X_test)
-predictions = [round(value) for value in Y_pred]
+# NaiveBayes
+# nb = MultinomialNB()
+# nb.fit(X_train, y_train)
+# # Y_train = nb.predict(X_train)
+# # print("Train Accuracy:", np.mean(Y_train == y_train))
+# Y_test = nb.predict(X_test)
+# acc = np.mean(Y_test == y_test)
+# print("Test Accuracy: %.2f%%" % (acc * 100))  # 32.26%
 
-# evaluate predictions
-accuracy = accuracy_score(y_test, predictions)
-accuracies['Logistic Regression'] = accuracy* 100.0
-print("Accuracy: %.2f%%" % (accuracy * 100.0))
+# Sequential Models
+
 
 # Split words. Tokenization. Retrieve all words of each post separated by coma.
 # This function is necessary for many operations, e.g. for applying Removing stopwords operation
@@ -117,6 +175,6 @@ print("Accuracy: %.2f%%" % (accuracy * 100.0))
 # words = [x for y in words for x in y]
 # print(Counter(words).most_common(20))
 
-# TODO: Construct best ML model.
+# TODO: Finish Keras LSTM model. Try transformers
 
 # print(df.head(10))
